@@ -25,6 +25,11 @@ async function initSupabase() {
     return true;
   } catch (err) {
     console.error('Supabase init error:', err);
+  if (err instanceof ReferenceError && err.message.includes("supabase")) {
+    setSyncStatus("error", "Supabase SDK not loaded — check CDN");
+    supabaseClient = null;
+    return;
+  }
     setSyncStatus('error', 'Cloud sync unavailable — using local storage');
     supabaseClient = null;
     return false;
@@ -408,5 +413,5 @@ document.querySelectorAll('.sort-btn').forEach(function (btn) {
   await loadEvents();
   render();
   startLiveTick();
-  setSyncStatus('connecting', 'Fetching your events...');
+  // status already set by initSupabase/loadEvents
 })();
