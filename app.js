@@ -53,18 +53,39 @@ async function initSupabase() {
   try {
     supabaseClient = supabase.createClient(cfg.url, cfg.anonKey);
 
-    // Use a user-configurable sync key for cross-device sharing
-    // Falls back to auto-generated device ID if no sync key is set
-    var syncKey = localStorage.getItem('daycount-sync-key') || '';
-    if (!syncKey) {
-      var dId = localStorage.getItem('daycount-device-id');
-      if (!dId) {
-        dId = crypto.randomUUID().slice(0, 8);
-        localStorage.setItem('daycount-device-id', dId);
-      }
-      syncKey = dId;
-    }
-    currentUserId = syncKey;
+    // Generate a deterministic UUID from the sync key using SHA-256
+// Same key = same UUID on any device, no database schema changes needed
+// Falls back to a random UUID if no sync key is set
+async function resolveUserId() {
+  var syncKey = localStorage.getItem('daycount-sync-key');
+  if (syncKey && syncKey.trim()) {
+    return await keyToUuid(syncKey.trim());
+  }
+  var uuid = localStorage.getItem('daycount-device-id');
+  if (!uuid) {
+    uuid = crypto.randomUUID();
+    localStorage.setItem('daycount-device-id', uuid);
+  }
+  return uuid;
+}
+
+async function keyToUuid(key) {
+  try {
+    var enc = new TextEncoder();
+    var hash = await crypto.subtle.digest('SHA-256', enc.encode('daycount-' + key));
+    var arr = Array.from(new Uint8Array(hash)).slice(0, 16);
+    var hex = arr.map(function (b) { return ('0' + b.toString(16)).slice(-2); }).join('');
+    return hex.slice(0, 8) + '-' + hex.slice(8, 12) + '-4' + hex.slice(13, 16) + '-a' + hex.slice(17, 20) + '-' + hex.slice(20, 32);
+  } catch (e) {
+    // Fallback if crypto.subtle is unavailable (e.g. HTTP)
+    var h = 0, i;
+    for (i = 0; i < key.length; i++) { h = ((h << 5) - h) + key.charCodeAt(i); h |= 0; }
+    var fallback = Math.abs(h).toString(16).padStart(8, '0');
+    while (fallback.length < 32) fallback += fallback;
+    fallback = fallback.slice(0, 32);
+    return fallback.slice(0, 8) + '-' + fallback.slice(8, 12) + '-4' + fallback.slice(13, 16) + '-a' + fallback.slice(17, 20) + '-' + fallback.slice(20, 32);
+  }
+}
     isSupabaseReady = true;
     setSyncStatus('connected', 'Synced to cloud');
     return true;
