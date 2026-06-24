@@ -14,10 +14,16 @@ async function initSupabase() {
   try {
     supabaseClient = supabase.createClient(cfg.url, cfg.anonKey);
 
-    // Sign in anonymously (creates a persistent session)
-    const { data: { session }, error } = await supabaseClient.auth.signInAnonymously();
-    if (error) throw error;
-    if (!session) throw new Error('No session returned');
+    // Try to restore existing session first (avoids creating new users on every refresh)
+    var { data: existing } = await supabaseClient.auth.getSession();
+    var session = existing.session;
+
+    if (!session) {
+      var result = await supabaseClient.auth.signInAnonymously();
+      if (result.error) throw result.error;
+      session = result.data.session;
+      if (!session) throw new Error('No session returned');
+    }
 
     currentUserId = session.user.id;
     isSupabaseReady = true;
