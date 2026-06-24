@@ -231,7 +231,7 @@ function saveLocalEvents(data) {
 async function loadEvents() {
   if (isSupabaseReady) {
     const data = await fetchEventsFromSupabase();
-    if (data !== null) {
+    if (data !== null && data.length > 0) {
       events = data;
       saveLocalEvents(data); // local cache
       return;
@@ -248,28 +248,23 @@ async function loadEvents() {
 // ==================== CRUD ====================
 
 async function addEvent(name, date, time) {
-  if (events.some(e => e.name.toLowerCase() === name.toLowerCase())) {
+  if (events.some(function(e) { return e.name.toLowerCase() === name.toLowerCase(); })) {
     showToast('An event with this name already exists', 'error');
     return false;
   }
 
-  const ev = { id: generateId(), name, date, time };
+  var ev = { id: generateId(), name: name, date: date, time: time };
 
+  // Try Supabase sync, but always save locally as fallback
   if (isSupabaseReady && supabaseClient) {
-    const ok = await insertEventToSupabase(ev);
-    if (ok) {
-      events.push(ev);
-      render();
-      showToast('"' + name + '" added!');
-      return true;
-    }
+    var ok = await insertEventToSupabase(ev);
+    if (!ok) console.warn('Supabase insert failed, saved locally');
   }
 
-  // Fallback: local only
   events.push(ev);
   saveLocalEvents(events);
   render();
-  showToast('"' + name + '" added (local only)');
+  showToast('"' + name + '" added!');
   return true;
 }
 
