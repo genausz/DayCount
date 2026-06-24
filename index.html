@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="description" content="DayCount - Track countdowns to your most important dates">
+  <meta name="description" content="DayCount - 自定义日期倒计时，同步保存到云端">
   <meta name="theme-color" content="#0a0e1a">
   <title>DayCount</title>
   <link rel="stylesheet" href="style.css">
@@ -16,6 +16,14 @@
     <h1>DayCount</h1>
     <p>Track the days that matter</p>
   </header>
+
+  <!-- Sync Status Bar -->
+  <div class="sync-bar" id="syncBar">
+    <div class="sync-bar-inner">
+      <span class="sync-dot" id="syncDot"></span>
+      <span class="sync-text" id="syncText">Initializing...</span>
+    </div>
+  </div>
 
   <!-- Controls -->
   <div class="controls">
@@ -89,6 +97,9 @@
     <span id="toastMsg"></span>
   </div>
 
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="supabase-config.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

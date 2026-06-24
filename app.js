@@ -1,4 +1,38 @@
-// State
+// ==================== Supabase Client ====================
+
+let supabaseClient = null;
+let currentUserId = null;
+let isSupabaseReady = false;
+
+async function initSupabase() {
+  const cfg = window.SUPABASE_CONFIG;
+  if (!cfg || !cfg.url || !cfg.anonKey) {
+    setSyncStatus('config-needed', 'Please configure Supabase in supabase-config.js');
+    return;
+  }
+
+  try {
+    supabaseClient = supabase.createClient(cfg.url, cfg.anonKey);
+
+    // Sign in anonymously (creates a persistent session)
+    const { data: { session }, error } = await supabaseClient.auth.signInAnonymously();
+    if (error) throw error;
+    if (!session) throw new Error('No session returned');
+
+    currentUserId = session.user.id;
+    isSupabaseReady = true;
+    setSyncStatus('connected', 'Synced to cloud');
+    return true;
+  } catch (err) {
+    console.error('Supabase init error:', err);
+    setSyncStatus('error', 'Cloud sync unavailable — using local storage');
+    supabaseClient = null;
+    return false;
+  }
+}
+
+// ==================== State ====================
+
 let events = [];
 let sortMode = 'nearest';
 let updateInterval = null;
@@ -13,19 +47,24 @@ const eventNameInput = document.getElementById('eventName');
 const eventDateInput = document.getElementById('eventDate');
 const eventTimeInput = document.getElementById('eventTime');
 const addEventBtn = document.getElementById('addEventBtn');
-const addEventFab = document.getElementById('addEventFab');
 const modalCancel = document.getElementById('modalCancel');
 const modalClose = document.getElementById('modalClose');
 const toast = document.getElementById('toast');
 const toastMsg = document.getElementById('toastMsg');
-const toastIcon = document.getElementById('toastIcon');
 
-// Sort buttons
-const sortBtns = document.querySelectorAll('.sort-btn');
+// Sync status
+const syncDot = document.getElementById('syncDot');
+const syncText = document.getElementById('syncText');
 
-// Helpers
+function setSyncStatus(state, text) {
+  syncDot.className = 'sync-dot ' + state;
+  syncText.textContent = text;
+}
+
+// ==================== Helpers ====================
+
 function generateId() {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
 function formatDate(dateStr, timeStr) {
@@ -34,17 +73,9 @@ function formatDate(dateStr, timeStr) {
   let str = d.toLocaleDateString('en-US', opts);
   if (timeStr) {
     const t = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-    str += ` at ${t}`;
+    str += ' at ' + t;
   }
   return str;
-}
-
-function getDaysDiff(dateStr, timeStr) {
-  const now = new Date();
-  const target = new Date(dateStr + (timeStr ? `T${timeStr}` : 'T00:00'));
-  const diff = target.getTime() - now.getTime();
-  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-  return { days, diff, target };
 }
 
 function getFullCountdown(dateStr, timeStr) {
@@ -70,164 +101,9 @@ function getStatus(dateStr, timeStr, days) {
     if (days === 0 && now < target) return 'today';
     return 'past';
   }
-
   if (targetDay > today) return 'upcoming';
   if (targetDay.getTime() === today.getTime()) return 'today';
   return 'past';
-}
-
-// Storage
-function loadEvents() {
-  try {
-    const data = localStorage.getItem('daycount-events');
-    events = data ? JSON.parse(data) : [];
-  } catch {
-    events = [];
-  }
-}
-
-function saveEvents() {
-  localStorage.setItem('daycount-events', JSON.stringify(events));
-}
-
-// Toast
-function showToast(message, type = 'success') {
-  toastMsg.textContent = message;
-  toast.className = 'toast ' + type + ' show';
-  clearTimeout(toast._hide);
-  toast._hide = setTimeout(() => {
-    toast.classList.remove('show');
-  }, 2500);
-}
-
-// Render
-function render() {
-  if (!events.length) {
-    grid.innerHTML = '';
-    emptyState.style.display = 'block';
-    return;
-  }
-  emptyState.style.display = 'none';
-
-  const sorted = [...events].sort((a, b) => {
-    const aTarget = new Date(a.date + (a.time ? `T${a.time}` : 'T00:00'));
-    const bTarget = new Date(b.date + (b.time ? `T${b.time}` : 'T00:00'));
-    if (sortMode === 'nearest') {
-      const now = new Date();
-      const aAbs = Math.abs(aTarget - now);
-      const bAbs = Math.abs(bTarget - now);
-      return aAbs - bAbs;
-    }
-    if (sortMode === 'soonest') return aTarget - bTarget;
-    if (sortMode === 'latest') return bTarget - aTarget;
-    return 0;
-  });
-
-  let html = '';
-  for (const ev of sorted) {
-    const { days, diff } = getDaysDiff(ev.date, ev.time);
-    const status = getStatus(ev.date, ev.time, days);
-    const countdown = getFullCountdown(ev.date, ev.time);
-
-    let bigNumber, label;
-    if (status === 'today') {
-      if (ev.time) {
-        bigNumber = '🎉';
-        label = 'Happening today!';
-      } else {
-        bigNumber = '✨';
-        label = 'Today!';
-      }
-    } else if (status === 'upcoming') {
-      bigNumber = countdown.days;
-      label = countdown.days === 1 ? 'day to go' : 'days to go';
-    } else {
-      bigNumber = countdown.days;
-      label = countdown.days === 1 ? 'day ago' : 'days ago';
-    }
-
-    const showLive = status === 'upcoming' && countdown.days <= 30;
-
-    const badgeLabels = { upcoming: 'Upcoming', today: 'Today!', past: 'Past' };
-
-    html += `
-      <div class="event-card ${status}" data-id="${ev.id}">
-        <div class="event-card-header">
-          <div class="event-name">${escapeHtml(ev.name)}</div>
-          <div class="event-actions">
-            <button class="btn btn-danger delete-btn" data-id="${ev.id}" title="Delete event">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="3 6 5 6 21 6"></polyline>
-                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-              </svg>
-            </button>
-          </div>
-        </div>
-        <div class="event-date">
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-            <line x1="16" y1="2" x2="16" y2="6"></line>
-            <line x1="8" y1="2" x2="8" y2="6"></line>
-            <line x1="3" y1="10" x2="21" y2="10"></line>
-          </svg>
-          ${formatDate(ev.date, ev.time)}
-        </div>
-        <div class="countdown-main">
-          <div class="count-number">${bigNumber}</div>
-          <div class="count-label">${label}</div>
-        </div>
-        ${status === 'today' ? `
-          <div class="event-badge today">
-            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="20 6 9 17 4 12"></polyline>
-            </svg>
-            Happening Now
-          </div>
-        ` : status === 'upcoming' ? `
-          <div class="event-badge upcoming">
-            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="20 6 9 17 4 12"></polyline>
-            </svg>
-            Upcoming
-          </div>
-        ` : `
-          <div class="event-badge past">
-            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="20 6 9 17 4 12"></polyline>
-            </svg>
-            Passed
-          </div>
-        `}
-        ${showLive ? `
-          <div class="live-countdown" data-id="${ev.id}" data-date="${ev.date}" data-time="${ev.time || ''}">
-            <div class="countdown-unit">
-              <div class="countdown-value" data-unit="hours">${String(countdown.hours).padStart(2, '0')}</div>
-              <div class="countdown-label">Hours</div>
-            </div>
-            <div class="countdown-unit">
-              <div class="countdown-value" data-unit="minutes">${String(countdown.minutes).padStart(2, '0')}</div>
-              <div class="countdown-label">Min</div>
-            </div>
-            <div class="countdown-unit">
-              <div class="countdown-value" data-unit="seconds">${String(countdown.seconds).padStart(2, '0')}</div>
-              <div class="countdown-label">Sec</div>
-            </div>
-          </div>
-        ` : ''}
-      </div>
-    `;
-  }
-
-  grid.innerHTML = html;
-
-  // Bind delete events
-  document.querySelectorAll('.delete-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const id = btn.dataset.id;
-      deleteEvent(id);
-    });
-  });
 }
 
 function escapeHtml(str) {
@@ -236,66 +112,251 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-// Live countdown tick
+// ==================== Supabase CRUD ====================
+
+async function fetchEventsFromSupabase() {
+  if (!supabaseClient || !currentUserId) return null;
+  const { data, error } = await supabaseClient
+    .from('events')
+    .select('id, name, date, time')
+    .eq('user_id', currentUserId);
+  if (error) { console.error('Supabase fetch error:', error); return null; }
+  return data;
+}
+
+async function insertEventToSupabase(ev) {
+  if (!supabaseClient || !currentUserId) return false;
+  const { error } = await supabaseClient
+    .from('events')
+    .insert({ id: ev.id, user_id: currentUserId, name: ev.name, date: ev.date, time: ev.time });
+  if (error) { console.error('Supabase insert error:', error); return false; }
+  return true;
+}
+
+async function deleteEventFromSupabase(id) {
+  if (!supabaseClient || !currentUserId) return false;
+  const { error } = await supabaseClient
+    .from('events')
+    .delete()
+    .eq('id', id)
+    .eq('user_id', currentUserId);
+  if (error) { console.error('Supabase delete error:', error); return false; }
+  return true;
+}
+
+// ==================== Local Storage Fallback ====================
+
+function loadLocalEvents() {
+  try { return JSON.parse(localStorage.getItem('daycount-events') || '[]'); } catch { return []; }
+}
+
+function saveLocalEvents(data) {
+  localStorage.setItem('daycount-events', JSON.stringify(data));
+}
+
+// ==================== Data Loading ====================
+
+async function loadEvents() {
+  if (isSupabaseReady) {
+    const data = await fetchEventsFromSupabase();
+    if (data) {
+      events = data;
+      saveLocalEvents(data); // local cache
+      return;
+    }
+  }
+
+  // Fallback to local
+  events = loadLocalEvents();
+  if (!isSupabaseReady && events.length > 0) {
+    setSyncStatus('offline', 'Offline — data saved locally only');
+  }
+}
+
+// ==================== CRUD ====================
+
+async function addEvent(name, date, time) {
+  if (events.some(e => e.name.toLowerCase() === name.toLowerCase())) {
+    showToast('An event with this name already exists', 'error');
+    return false;
+  }
+
+  const ev = { id: generateId(), name, date, time };
+
+  if (isSupabaseReady && supabaseClient) {
+    const ok = await insertEventToSupabase(ev);
+    if (ok) {
+      events.push(ev);
+      render();
+      showToast('"' + name + '" added!');
+      return true;
+    }
+  }
+
+  // Fallback: local only
+  events.push(ev);
+  saveLocalEvents(events);
+  render();
+  showToast('"' + name + '" added (local only)');
+  return true;
+}
+
+async function deleteEvent(id) {
+  const ev = events.find(e => e.id === id);
+  if (!ev) return;
+
+  if (isSupabaseReady && supabaseClient) {
+    await deleteEventFromSupabase(id);
+  }
+
+  events = events.filter(e => e.id !== id);
+  saveLocalEvents(events);
+  render();
+  showToast('"' + ev.name + '" removed', 'error');
+}
+
+// ==================== Toast ====================
+
+function showToast(message, type) {
+  type = type || 'success';
+  toastMsg.textContent = message;
+  toast.className = 'toast ' + type + ' show';
+  clearTimeout(toast._hide);
+  toast._hide = setTimeout(function () {
+    toast.classList.remove('show');
+  }, 2500);
+}
+
+// ==================== Render ====================
+
+function render() {
+  if (!events.length) {
+    grid.innerHTML = '';
+    emptyState.style.display = 'block';
+    return;
+  }
+  emptyState.style.display = 'none';
+
+  var sorted = events.slice().sort(function (a, b) {
+    var aTarget = new Date(a.date + (a.time ? 'T' + a.time : 'T00:00'));
+    var bTarget = new Date(b.date + (b.time ? 'T' + b.time : 'T00:00'));
+    if (sortMode === 'nearest') {
+      var now = new Date();
+      return Math.abs(aTarget - now) - Math.abs(bTarget - now);
+    }
+    if (sortMode === 'soonest') return aTarget - bTarget;
+    if (sortMode === 'latest') return bTarget - aTarget;
+    return 0;
+  });
+
+  var html = '';
+  for (var i = 0; i < sorted.length; i++) {
+    var ev = sorted[i];
+    var cd = getFullCountdown(ev.date, ev.time);
+    var status = getStatus(ev.date, ev.time, cd.days);
+
+    var bigNumber, label;
+    if (status === 'today') {
+      bigNumber = ev.time ? '\uD83C\uDF89' : '\u2728';
+      label = ev.time ? 'Happening today!' : 'Today!';
+    } else if (status === 'upcoming') {
+      bigNumber = cd.days;
+      label = cd.days === 1 ? 'day to go' : 'days to go';
+    } else {
+      bigNumber = cd.days;
+      label = cd.days === 1 ? 'day ago' : 'days ago';
+    }
+
+    var showLive = status === 'upcoming' && cd.days <= 30;
+
+    html += '<div class="event-card ' + status + '" data-id="' + ev.id + '">';
+    html += '<div class="event-card-header">';
+    html += '<div class="event-name">' + escapeHtml(ev.name) + '</div>';
+    html += '<div class="event-actions">';
+    html += '<button class="btn btn-danger delete-btn" data-id="' + ev.id + '" title="Delete event">';
+    html += '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>';
+    html += '</button></div></div>';
+
+    html += '<div class="event-date">';
+    html += '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>';
+    html += formatDate(ev.date, ev.time) + '</div>';
+
+    html += '<div class="countdown-main">';
+    html += '<div class="count-number">' + bigNumber + '</div>';
+    html += '<div class="count-label">' + label + '</div></div>';
+
+    if (status === 'today') {
+      html += '<div class="event-badge today"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> Happening Now</div>';
+    } else if (status === 'upcoming') {
+      html += '<div class="event-badge upcoming"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> Upcoming</div>';
+    } else {
+      html += '<div class="event-badge past"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> Passed</div>';
+    }
+
+    if (showLive) {
+      html += '<div class="live-countdown" data-id="' + ev.id + '" data-date="' + ev.date + '" data-time="' + (ev.time || '') + '">';
+      html += '<div class="countdown-unit"><div class="countdown-value" data-unit="hours">' + String(cd.hours).padStart(2, '0') + '</div><div class="countdown-label">Hours</div></div>';
+      html += '<div class="countdown-unit"><div class="countdown-value" data-unit="minutes">' + String(cd.minutes).padStart(2, '0') + '</div><div class="countdown-label">Min</div></div>';
+      html += '<div class="countdown-unit"><div class="countdown-value" data-unit="seconds">' + String(cd.seconds).padStart(2, '0') + '</div><div class="countdown-label">Sec</div></div>';
+      html += '</div>';
+    }
+
+    html += '</div>';
+  }
+
+  grid.innerHTML = html;
+
+  // Bind delete events
+  document.querySelectorAll('.delete-btn').forEach(function (btn) {
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      deleteEvent(btn.dataset.id);
+    });
+  });
+}
+
+// ==================== Live Countdown Tick ====================
+
 function startLiveTick() {
   if (updateInterval) clearInterval(updateInterval);
-  updateInterval = setInterval(() => {
-    document.querySelectorAll('.live-countdown').forEach(container => {
-      const id = container.dataset.id;
-      const date = container.dataset.date;
-      const time = container.dataset.time;
-      const cd = getFullCountdown(date, time);
-      const status = getStatus(date, time, cd.days);
+  updateInterval = setInterval(function () {
+    document.querySelectorAll('.live-countdown').forEach(function (container) {
+      var id = container.dataset.id;
+      var date = container.dataset.date;
+      var time = container.dataset.time;
+      var cd = getFullCountdown(date, time);
+      var status = getStatus(date, time, cd.days);
 
-      // If event just ticked past transition, re-render
       if (status !== 'upcoming' || cd.days > 30) {
         render();
         return;
       }
 
-      // Update matching card
-      const card = container.closest('.event-card');
-      const mainNum = card?.querySelector('.count-number');
-      const mainLabel = card?.querySelector('.count-label');
+      var card = container.closest('.event-card');
+      var mainNum = card ? card.querySelector('.count-number') : null;
+      var mainLabel = card ? card.querySelector('.count-label') : null;
       if (mainNum) mainNum.textContent = cd.days;
       if (mainLabel) mainLabel.textContent = cd.days === 1 ? 'day to go' : 'days to go';
 
-      container.querySelector('[data-unit="hours"]').textContent = String(cd.hours).padStart(2, '0');
-      container.querySelector('[data-unit="minutes"]').textContent = String(cd.minutes).padStart(2, '0');
-      container.querySelector('[data-unit="seconds"]').textContent = String(cd.seconds).padStart(2, '0');
+      var h = container.querySelector('[data-unit="hours"]');
+      var m = container.querySelector('[data-unit="minutes"]');
+      var s = container.querySelector('[data-unit="seconds"]');
+      if (h) h.textContent = String(cd.hours).padStart(2, '0');
+      if (m) m.textContent = String(cd.minutes).padStart(2, '0');
+      if (s) s.textContent = String(cd.seconds).padStart(2, '0');
     });
   }, 1000);
 }
 
-// CRUD
-function addEvent(name, date, time) {
-  if (events.some(e => e.name.toLowerCase() === name.toLowerCase())) {
-    showToast('An event with this name already exists', 'error');
-    return false;
-  }
-  events.push({ id: generateId(), name, date, time });
-  saveEvents();
-  render();
-  showToast(`"${name}" added!`);
-  return true;
-}
+// ==================== Modal ====================
 
-function deleteEvent(id) {
-  const ev = events.find(e => e.id === id);
-  events = events.filter(e => e.id !== id);
-  saveEvents();
-  render();
-  if (ev) showToast(`"${ev.name}" removed`, 'error');
-}
-
-// Modal
 function openModal() {
   modalTitle.textContent = 'New Event';
   eventNameInput.value = '';
   eventDateInput.value = new Date().toISOString().split('T')[0];
   eventTimeInput.value = '';
   modalOverlay.classList.add('active');
-  setTimeout(() => eventNameInput.focus(), 100);
+  setTimeout(function () { eventNameInput.focus(); }, 100);
 }
 
 function closeModal() {
@@ -304,49 +365,48 @@ function closeModal() {
 }
 
 addEventBtn.addEventListener('click', openModal);
-addEventFab.addEventListener('click', openModal);
 modalCancel.addEventListener('click', closeModal);
 modalClose.addEventListener('click', closeModal);
-modalOverlay.addEventListener('click', (e) => {
+modalOverlay.addEventListener('click', function (e) {
   if (e.target === modalOverlay) closeModal();
 });
 
-document.addEventListener('keydown', (e) => {
+document.addEventListener('keydown', function (e) {
   if (e.key === 'Escape') closeModal();
   if (e.key === 'n' && !modalOverlay.classList.contains('active') && !e.ctrlKey && !e.metaKey) {
     openModal();
   }
 });
 
-modalForm.addEventListener('submit', (e) => {
+modalForm.addEventListener('submit', function (e) {
   e.preventDefault();
-  const name = eventNameInput.value.trim();
-  const date = eventDateInput.value;
-  const time = eventTimeInput.value;
-  if (!name) {
-    showToast('Please enter an event name', 'error');
-    return;
-  }
-  if (!date) {
-    showToast('Please select a date', 'error');
-    return;
-  }
-  if (addEvent(name, date, time)) {
-    closeModal();
-  }
+  var name = eventNameInput.value.trim();
+  var date = eventDateInput.value;
+  var time = eventTimeInput.value;
+  if (!name) { showToast('Please enter an event name', 'error'); return; }
+  if (!date) { showToast('Please select a date', 'error'); return; }
+  addEvent(name, date, time).then(function (ok) {
+    if (ok) closeModal();
+  });
 });
 
-// Sort
-sortBtns.forEach(btn => {
-  btn.addEventListener('click', () => {
-    sortBtns.forEach(b => b.classList.remove('active'));
+// ==================== Sort ====================
+
+document.querySelectorAll('.sort-btn').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    document.querySelectorAll('.sort-btn').forEach(function (b) { b.classList.remove('active'); });
     btn.classList.add('active');
     sortMode = btn.dataset.sort;
     render();
   });
 });
 
-// Init
-loadEvents();
-render();
-startLiveTick();
+// ==================== Init ====================
+
+(async function init() {
+  await initSupabase();
+  await loadEvents();
+  render();
+  startLiveTick();
+  setSyncStatus('connecting', 'Fetching your events...');
+})();

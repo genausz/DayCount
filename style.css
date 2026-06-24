@@ -560,3 +560,57 @@ body::before {
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* Sync Status Bar */
+.sync-bar {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: center;
+  padding: 0 1.5rem 0.5rem;
+}
+
+.sync-bar-inner {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 1rem;
+  border-radius: 999px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  font-size: 0.75rem;
+}
+
+.sync-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.sync-dot.connecting {
+  background: var(--accent-blue);
+  animation: pulse-dot 1.5s ease-in-out infinite;
+}
+
+.sync-dot.connected {
+  background: var(--accent-teal);
+}
+
+.sync-dot.config-needed {
+  background: var(--accent-gold);
+}
+
+.sync-dot.error,
+.sync-dot.offline {
+  background: var(--accent-red);
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+.sync-text {
+  color: var(--text-muted);
+}
