@@ -22,6 +22,14 @@
     <div class="sync-bar-inner">
       <span class="sync-dot" id="syncDot"></span>
       <span class="sync-text" id="syncText">Initializing...</span>
+      <span class="sync-sep"></span>
+      <button class="sync-key-btn" id="syncKeyBtn" onclick="promptSyncKey()" title="Set your sync key for cross-device sharing">
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+        </svg>
+        <span id="syncKeyAction">Set Key</span>
+      </button>
     </div>
   </div>
 

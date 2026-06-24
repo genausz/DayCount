@@ -614,3 +614,31 @@ body::before {
 .sync-text {
   color: var(--text-muted);
 }
+
+/* Sync Key Button */
+.sync-sep {
+  width: 1px;
+  height: 12px;
+  background: var(--border-color);
+  flex-shrink: 0;
+}
+
+.sync-key-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  cursor: pointer;
+  padding: 0.15rem 0.3rem;
+  border-radius: 4px;
+  transition: var(--transition);
+  white-space: nowrap;
+}
+
+.sync-key-btn:hover {
+  color: var(--accent-gold);
+  background: rgba(245, 158, 11, 0.08);
+}

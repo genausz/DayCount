@@ -4,6 +4,45 @@ let supabaseClient = null;
 let currentUserId = null;
 let isSupabaseReady = false;
 
+
+// ==================== Sync Key Management ====================
+
+function getSyncKey() {
+  return localStorage.getItem('daycount-sync-key') || '';
+}
+
+function setSyncKey(key) {
+  if (key && key.trim()) {
+    localStorage.setItem('daycount-sync-key', key.trim());
+    return key.trim();
+  }
+  localStorage.removeItem('daycount-sync-key');
+  return '';
+}
+
+function refreshSyncKeyDisplay() {
+  var btn = document.getElementById("syncKeyAction");
+  if (btn) {
+    btn.textContent = getSyncKey() ? "Change" : "Set Key";
+  }
+}
+
+function promptSyncKey() {
+  var current = getSyncKey();
+  var msg = current
+    ? 'Enter a sync key to share data across devices.\n\nCurrent key: ' + current + '\n\nLeave blank to use auto-generated key.'
+    : 'Enter a sync key to share data across devices.\n\nUse the same key on another device to sync events.';
+  var newKey = prompt(msg, current);
+  if (newKey === null) return;
+  var prevKey = current;
+  var changed = setSyncKey(newKey || "");
+  refreshSyncKeyDisplay();
+  if (changed !== prevKey) {
+    init();
+    showToast(changed ? "Sync key updated!" : "Using auto-generated key", "success");
+  }
+}
+
 async function initSupabase() {
   const cfg = window.SUPABASE_CONFIG;
   if (!cfg || !cfg.url || !cfg.anonKey) {
@@ -14,14 +53,18 @@ async function initSupabase() {
   try {
     supabaseClient = supabase.createClient(cfg.url, cfg.anonKey);
 
-    // Use a persistent device ID from localStorage instead of Supabase Auth
-    // This avoids session expiry issues - the ID never changes
-    var deviceId = localStorage.getItem('daycount-device-id');
-    if (!deviceId) {
-      deviceId = crypto.randomUUID();
-      localStorage.setItem('daycount-device-id', deviceId);
+    // Use a user-configurable sync key for cross-device sharing
+    // Falls back to auto-generated device ID if no sync key is set
+    var syncKey = localStorage.getItem('daycount-sync-key') || '';
+    if (!syncKey) {
+      var dId = localStorage.getItem('daycount-device-id');
+      if (!dId) {
+        dId = crypto.randomUUID().slice(0, 8);
+        localStorage.setItem('daycount-device-id', dId);
+      }
+      syncKey = dId;
     }
-    currentUserId = deviceId;
+    currentUserId = syncKey;
     isSupabaseReady = true;
     setSyncStatus('connected', 'Synced to cloud');
     return true;
@@ -314,6 +357,7 @@ function render() {
 
   grid.innerHTML = html;
 
+  refreshSyncKeyDisplay();
   // Bind delete events
   document.querySelectorAll('.delete-btn').forEach(function (btn) {
     btn.addEventListener('click', function (e) {
