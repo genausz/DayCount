@@ -14,16 +14,10 @@ async function initSupabase() {
   try {
     supabaseClient = supabase.createClient(cfg.url, cfg.anonKey);
 
-    // Check for existing session first (avoids rate limits on free tier)
-    var existing = await supabaseClient.auth.getSession();
-    var session = existing.data.session;
-
-    if (!session) {
-      var result = await supabaseClient.auth.signInAnonymously();
-      if (result.error) throw result.error;
-      session = result.data.session;
-      if (!session) throw new Error('No session returned');
-    }
+    // Sign in anonymously (creates a persistent session)
+    const { data: { session }, error } = await supabaseClient.auth.signInAnonymously();
+    if (error) throw error;
+    if (!session) throw new Error('No session returned');
 
     currentUserId = session.user.id;
     isSupabaseReady = true;
