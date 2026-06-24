@@ -9,6 +9,6 @@
  * 5. 刷新页面即可
  */
 window.SUPABASE_CONFIG = {
-  url: '',    // ← 粘贴你的 Supabase URL, 例如 https://xxx.supabase.co
-  anonKey: '' // ← 粘贴你的 anon public key
+  url: 'https://klqnimhrjyhzoscoxcrx.supabase.co',    // ← 粘贴你的 Supabase URL, 例如 https://xxx.supabase.co
+  anonKey: 'sb_publishable_9UZ3BXHnREQuzn-zMRjTMQ_9wB9ALJ5' // ← 粘贴你的 anon public key
 };
