@@ -69,6 +69,7 @@ function setSyncStatus(state, text) {
 // ==================== Helpers ====================
 
 function generateId() {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
@@ -164,7 +165,7 @@ function saveLocalEvents(data) {
 async function loadEvents() {
   if (isSupabaseReady) {
     const data = await fetchEventsFromSupabase();
-    if (data) {
+    if (data !== null) {
       events = data;
       saveLocalEvents(data); // local cache
       return;
