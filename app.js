@@ -14,18 +14,14 @@ async function initSupabase() {
   try {
     supabaseClient = supabase.createClient(cfg.url, cfg.anonKey);
 
-    // Try to restore existing session first (avoids creating new users on every refresh)
-    var { data: existing } = await supabaseClient.auth.getSession();
-    var session = existing.session;
-
-    if (!session) {
-      var result = await supabaseClient.auth.signInAnonymously();
-      if (result.error) throw result.error;
-      session = result.data.session;
-      if (!session) throw new Error('No session returned');
+    // Use a persistent device ID from localStorage instead of Supabase Auth
+    // This avoids session expiry issues - the ID never changes
+    var deviceId = localStorage.getItem('daycount-device-id');
+    if (!deviceId) {
+      deviceId = crypto.randomUUID();
+      localStorage.setItem('daycount-device-id', deviceId);
     }
-
-    currentUserId = session.user.id;
+    currentUserId = deviceId;
     isSupabaseReady = true;
     setSyncStatus('connected', 'Synced to cloud');
     return true;
