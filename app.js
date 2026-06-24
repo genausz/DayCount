@@ -197,12 +197,11 @@ async function fetchEventsFromSupabase() {
 }
 
 async function insertEventToSupabase(ev) {
-  if (!supabaseClient || !currentUserId) return false;
-  const { error } = await supabaseClient
+  if (!supabaseClient || !currentUserId) return { message: 'Not connected' };
+  var res = await supabaseClient
     .from('events')
     .insert({ id: ev.id, user_id: currentUserId, name: ev.name, date: ev.date, time: ev.time });
-  if (error) { console.error('Supabase insert error:', error); return false; }
-  return true;
+  return res.error || null;
 }
 
 async function deleteEventFromSupabase(id) {
@@ -218,31 +217,12 @@ async function deleteEventFromSupabase(id) {
 
 // ==================== Local Storage Fallback ====================
 
-function loadLocalEvents() {
-  try { return JSON.parse(localStorage.getItem('daycount-events') || '[]'); } catch { return []; }
-}
-
-function saveLocalEvents(data) {
-  localStorage.setItem('daycount-events', JSON.stringify(data));
-}
-
-// ==================== Data Loading ====================
-
 async function loadEvents() {
   if (isSupabaseReady) {
-    const data = await fetchEventsFromSupabase();
-    if (data !== null && data.length > 0) {
-      events = data;
-      saveLocalEvents(data); // local cache
-      return;
-    }
+    events = await fetchEventsFromSupabase() || [];
+    return;
   }
-
-  // Fallback to local
-  events = loadLocalEvents();
-  if (!isSupabaseReady && events.length > 0) {
-    setSyncStatus('offline', 'Offline — data saved locally only');
-  }
+  events = [];
 }
 
 // ==================== CRUD ====================
@@ -253,31 +233,34 @@ async function addEvent(name, date, time) {
     return false;
   }
 
-  var ev = { id: generateId(), name: name, date: date, time: time };
+  if (!isSupabaseReady || !supabaseClient) {
+    showToast('Cloud sync not available', 'error');
+    return false;
+  }
 
-  // Try Supabase sync, but always save locally as fallback
-  if (isSupabaseReady && supabaseClient) {
-    var ok = await insertEventToSupabase(ev);
-    if (!ok) console.warn('Supabase insert failed, saved locally');
+  var ev = { id: generateId(), name: name, date: date, time: time };
+  var err = await insertEventToSupabase(ev);
+  if (err) {
+    console.error('Supabase insert error:', err);
+    showToast('Failed to save: ' + err.message, 'error');
+    return false;
   }
 
   events.push(ev);
-  saveLocalEvents(events);
   render();
   showToast('"' + name + '" added!');
   return true;
 }
 
 async function deleteEvent(id) {
-  const ev = events.find(e => e.id === id);
+  var ev = events.find(function(e) { return e.id === id; });
   if (!ev) return;
 
   if (isSupabaseReady && supabaseClient) {
     await deleteEventFromSupabase(id);
   }
 
-  events = events.filter(e => e.id !== id);
-  saveLocalEvents(events);
+  events = events.filter(function(e) { return e.id !== id; });
   render();
   showToast('"' + ev.name + '" removed', 'error');
 }
